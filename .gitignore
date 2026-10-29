@@ -1,0 +1,8 @@
+# 本地数据（笔记内容与截图，不提交）
+data/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store
+Thumbs.db
