@@ -27,7 +27,7 @@
 
 | 方法 | 路径 | 说明 | 成功响应 |
 | --- | --- | --- | --- |
-| GET | `/api/health` | 健康检查 | 200 `{"ok":true,"ocr":"zh-Hans-CN","note_count":3}` |
+| GET | `/api/health` | 健康检查 | 200 `{"ok":true,"ocr":"zh-Hans-CN","ocr_ready":true,"note_count":3}` |
 | GET | `/api/notes` | 笔记列表（created_at 倒序） | 200 `{"notes":[Note,...]}` |
 | GET | `/api/notes/{id}` | 单条笔记 | 200 `{"note":Note}`；404 |
 | POST | `/api/notes` | 上传截图并 OCR 生成笔记 | 201 `{"note":Note}` |

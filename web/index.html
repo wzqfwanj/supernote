@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>截图笔记</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="page">
+    <header class="site-header">
+      <h1>截图笔记</h1>
+      <p class="subtitle">粘贴、拖拽或选择截图，自动识别为可编辑笔记</p>
+    </header>
+
+    <main>
+      <section class="uploader" aria-labelledby="uploader-heading">
+        <h2 id="uploader-heading" class="visually-hidden">上传截图</h2>
+        <div id="dropzone" class="dropzone" role="button" tabindex="0"
+             aria-label="点击选择截图，或将截图拖拽到此处"
+             aria-describedby="dropzone-hint">
+          <p class="dropzone-main">点击选择截图</p>
+          <p class="dropzone-sub">或将图片拖拽到此处，也可以按 Ctrl+V 粘贴</p>
+          <p id="dropzone-hint" class="dropzone-hint">支持 PNG / JPEG / WEBP / GIF / BMP，可多选，单张不超过 20MB</p>
+        </div>
+        <input id="file-input" class="visually-hidden" type="file"
+               accept="image/png,image/jpeg,image/webp,image/gif,image/bmp,image/*" multiple>
+        <p id="upload-status" class="upload-status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section class="notes-section" aria-labelledby="notes-heading">
+        <div class="section-head">
+          <h2 id="notes-heading">笔记</h2>
+          <span id="note-count" class="note-count"></span>
+        </div>
+        <div id="notes-list" class="notes-grid" aria-live="polite" aria-busy="false"></div>
+      </section>
+    </main>
+
+    <footer class="site-footer">所有笔记与截图只保存在本机</footer>
+  </div>
+
+  <div id="detail-overlay" class="overlay" hidden>
+    <div class="detail" role="dialog" aria-modal="true" aria-labelledby="detail-heading">
+      <div class="detail-head">
+        <h2 id="detail-heading">笔记详情</h2>
+        <span id="detail-time" class="detail-time"></span>
+        <button id="detail-close" class="icon-button" type="button" aria-label="关闭">×</button>
+      </div>
+      <div class="detail-body">
+        <div class="detail-media">
+          <img id="detail-image" class="detail-image" alt="笔记截图原图">
+          <p id="detail-image-error" class="detail-image-error" hidden>图片加载失败</p>
+        </div>
+        <div class="detail-form">
+          <label class="field">
+            <span class="field-label">标题</span>
+            <input id="detail-title" class="field-input" type="text" maxlength="120" autocomplete="off">
+          </label>
+          <label class="field">
+            <span class="field-label">内容</span>
+            <textarea id="detail-content" class="field-textarea" rows="12" spellcheck="false"></textarea>
+          </label>
+          <div class="detail-actions">
+            <button id="detail-save" class="button button-primary" type="button">保存</button>
+            <button id="detail-delete" class="button button-danger" type="button">删除</button>
+            <button id="detail-cancel" class="button" type="button">关闭</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <noscript>请启用 JavaScript 以使用截图笔记。</noscript>
+  <script src="/app.js"></script>
+</body>
+</html>
