@@ -20,6 +20,9 @@
     'image/bmp': 'bmp'
   };
   var IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|bmp)$/i;
+  var THEME_STORAGE_KEY = 'supernote-theme';
+  var DARK_MODE_QUERY = '(prefers-color-scheme: dark)';
+  var darkModeMedia = typeof window.matchMedia === 'function' ? window.matchMedia(DARK_MODE_QUERY) : null;
 
   var DATE_TIME_FORMATTER = (function () {
     try {
@@ -64,6 +67,7 @@
   /* ---------- DOM 缓存与启动 ---------- */
 
   function cacheDom() {
+    dom.themeToggle = document.getElementById('theme-toggle');
     dom.dropzone = document.getElementById('dropzone');
     dom.fileInput = document.getElementById('file-input');
     dom.uploadStatus = document.getElementById('upload-status');
@@ -83,6 +87,9 @@
   }
 
   function bindEvents() {
+    if (dom.themeToggle) {
+      dom.themeToggle.addEventListener('click', onThemeToggleClick);
+    }
     dom.dropzone.addEventListener('click', onDropzoneActivate);
     dom.dropzone.addEventListener('keydown', onDropzoneKeydown);
     dom.fileInput.addEventListener('change', onFileInputChange);
@@ -104,6 +111,7 @@
 
   function init() {
     cacheDom();
+    initTheme();
     bindEvents();
     loadNotes();
   }
@@ -112,6 +120,74 @@
     document.addEventListener('DOMContentLoaded', init);
   } else {
     init();
+  }
+
+  /* ---------- 明暗主题 ---------- */
+
+  function readStoredTheme() {
+    try {
+      var value = window.localStorage.getItem(THEME_STORAGE_KEY);
+      return value === 'light' || value === 'dark' ? value : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function systemTheme() {
+    return darkModeMedia && darkModeMedia.matches ? 'dark' : 'light';
+  }
+
+  function currentTheme() {
+    return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+  }
+
+  function updateThemeToggle(theme) {
+    if (!dom.themeToggle) {
+      return;
+    }
+    var isDark = theme === 'dark';
+    dom.themeToggle.textContent = isDark ? '暗色' : '亮色';
+    dom.themeToggle.setAttribute('aria-pressed', isDark ? 'true' : 'false');
+    dom.themeToggle.setAttribute(
+      'aria-label',
+      isDark ? '当前主题：暗色，点击切换为亮色' : '当前主题：亮色，点击切换为暗色'
+    );
+    dom.themeToggle.title = '切换明暗主题';
+  }
+
+  function applyTheme(theme, persist) {
+    document.documentElement.setAttribute('data-theme', theme);
+    if (persist) {
+      try {
+        window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+      } catch (error) {
+        /* 隐私模式等无法写入 localStorage 时仅在本次会话生效 */
+      }
+    }
+    updateThemeToggle(theme);
+  }
+
+  function onThemeToggleClick() {
+    applyTheme(currentTheme() === 'dark' ? 'light' : 'dark', true);
+  }
+
+  function onSystemThemeChange() {
+    if (readStoredTheme()) {
+      return; /* 手动选择优先，忽略系统主题变化 */
+    }
+    applyTheme(systemTheme(), false);
+  }
+
+  function initTheme() {
+    /* <head> 内联脚本已提前写入 data-theme，这里同步按钮状态并监听系统变化。 */
+    applyTheme(readStoredTheme() || currentTheme(), false);
+    if (darkModeMedia) {
+      if (typeof darkModeMedia.addEventListener === 'function') {
+        darkModeMedia.addEventListener('change', onSystemThemeChange);
+      } else if (typeof darkModeMedia.addListener === 'function') {
+        darkModeMedia.addListener(onSystemThemeChange); /* 旧版浏览器回退 */
+      }
+    }
   }
 
   /* ---------- 网络请求 ---------- */

@@ -3,15 +3,40 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
+  <meta name="color-scheme" content="light dark">
   <title>截图笔记</title>
+  <link rel="icon" href="data:,">
+  <script>
+    /* 先于样式表执行：读取手动偏好，否则跟随系统，避免主题闪烁 */
+    (function () {
+      var theme = 'light';
+      try {
+        var stored = window.localStorage.getItem('supernote-theme');
+        if (stored === 'light' || stored === 'dark') {
+          theme = stored;
+        } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          theme = 'dark';
+        }
+      } catch (error) {
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          theme = 'dark';
+        }
+      }
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <div class="page">
     <header class="site-header">
-      <h1>截图笔记</h1>
-      <p class="subtitle">粘贴、拖拽或选择截图，自动识别为可编辑笔记</p>
+      <div class="site-header-text">
+        <h1>截图笔记</h1>
+        <p class="subtitle">粘贴、拖拽或选择截图，自动识别为可编辑笔记</p>
+      </div>
+      <button id="theme-toggle" class="theme-toggle" type="button"
+              aria-pressed="false" aria-label="当前主题：亮色，点击切换为暗色"
+              title="切换明暗主题">亮色</button>
     </header>
 
     <main>

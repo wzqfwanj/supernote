@@ -1,5 +1,6 @@
 :root {
-  --black: #111111;
+  color-scheme: light;
+  --fg: #111111;
   --text: #1a1a1a;
   --muted: #666666;
   --faint: #999999;
@@ -7,8 +8,35 @@
   --line-strong: #bbbbbb;
   --surface: #ffffff;
   --surface-subtle: #f7f7f7;
+  --border-strong: #111111;
+  --primary-bg: #111111;
+  --primary-bg-hover: #333333;
+  --on-primary: #ffffff;
+  --scrim: rgba(17, 17, 17, 0.55);
+  --toast-error-bg: #111111;
+  --toast-error-fg: #ffffff;
   --radius: 4px;
   --content-width: 1040px;
+}
+
+/* 深色主题：只覆盖变量，组件规则保持复用 */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --fg: #eaeaea;
+  --text: #eaeaea;
+  --muted: #a6a6a6;
+  --faint: #858585;
+  --line: #2c2c2c;
+  --line-strong: #4d4d4d;
+  --surface: #121212;
+  --surface-subtle: #1c1c1c;
+  --border-strong: #5a5a5a;
+  --primary-bg: #eaeaea;
+  --primary-bg-hover: #cfcfcf;
+  --on-primary: #121212;
+  --scrim: rgba(0, 0, 0, 0.7);
+  --toast-error-bg: #eaeaea;
+  --toast-error-fg: #121212;
 }
 
 * {
@@ -17,12 +45,13 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  background: var(--surface);
 }
 
 body {
   margin: 0;
   background: var(--surface);
-  color: var(--black);
+  color: var(--fg);
   font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", sans-serif;
   font-size: 16px;
   line-height: 1.6;
@@ -70,9 +99,17 @@ img {
   padding: 56px 28px 72px;
 }
 
-/* 顶部标题 */
+/* 顶部标题与主题切换 */
 .site-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
   padding-bottom: 32px;
+}
+
+.site-header-text {
+  min-width: 0;
 }
 
 .site-header h1 {
@@ -88,6 +125,35 @@ img {
   font-size: 15px;
 }
 
+.theme-toggle {
+  flex: none;
+  margin-top: 6px;
+  padding: 4px 10px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.theme-toggle:hover {
+  color: var(--fg);
+  border-color: var(--fg);
+}
+
+.theme-toggle[aria-pressed="true"] {
+  color: var(--fg);
+  border-color: var(--fg);
+}
+
+.theme-toggle:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 2px;
+}
+
 /* 上传区 */
 .dropzone {
   padding: 52px 24px;
@@ -101,11 +167,11 @@ img {
 
 .dropzone:hover,
 .dropzone:focus-visible {
-  border-color: var(--black);
+  border-color: var(--fg);
 }
 
 .dropzone.is-dragover {
-  border-color: var(--black);
+  border-color: var(--fg);
   background: var(--surface-subtle);
 }
 
@@ -186,11 +252,11 @@ img {
 
 .card:hover,
 .card:focus-visible {
-  border-color: var(--black);
+  border-color: var(--fg);
 }
 
 .card:focus-visible {
-  outline: 2px solid var(--black);
+  outline: 2px solid var(--fg);
   outline-offset: 2px;
 }
 
@@ -275,11 +341,11 @@ img {
   align-items: center;
   justify-content: center;
   padding: 8px 18px;
-  color: var(--black);
+  color: var(--fg);
   font-size: 14px;
   line-height: 1.4;
   background: var(--surface);
-  border: 1px solid var(--black);
+  border: 1px solid var(--fg);
   border-radius: var(--radius);
   cursor: pointer;
   transition: background-color 0.15s ease, color 0.15s ease;
@@ -290,7 +356,7 @@ img {
 }
 
 .button:focus-visible {
-  outline: 2px solid var(--black);
+  outline: 2px solid var(--fg);
   outline-offset: 2px;
 }
 
@@ -300,12 +366,14 @@ img {
 }
 
 .button-primary {
-  color: #ffffff;
-  background: var(--black);
+  color: var(--on-primary);
+  background: var(--primary-bg);
+  border-color: var(--primary-bg);
 }
 
 .button-primary:hover {
-  background: #333333;
+  background: var(--primary-bg-hover);
+  border-color: var(--primary-bg-hover);
 }
 
 /* 详情弹层 */
@@ -317,7 +385,7 @@ img {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(17, 17, 17, 0.55);
+  background: var(--scrim);
 }
 
 .overlay[hidden] {
@@ -331,7 +399,7 @@ img {
   max-height: calc(100vh - 48px);
   overflow: hidden;
   background: var(--surface);
-  border: 1px solid var(--black);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
 }
 
@@ -366,12 +434,12 @@ img {
 }
 
 .icon-button:hover {
-  color: var(--black);
+  color: var(--fg);
   background: var(--surface-subtle);
 }
 
 .icon-button:focus-visible {
-  outline: 2px solid var(--black);
+  outline: 2px solid var(--fg);
   outline-offset: 2px;
 }
 
@@ -433,7 +501,7 @@ img {
 .field-textarea {
   width: 100%;
   padding: 9px 12px;
-  color: var(--black);
+  color: var(--fg);
   font-size: 14px;
   background: var(--surface);
   border: 1px solid var(--line-strong);
@@ -444,7 +512,7 @@ img {
 
 .field-input:focus,
 .field-textarea:focus {
-  border-color: var(--black);
+  border-color: var(--fg);
 }
 
 .field-textarea {
@@ -476,18 +544,24 @@ img {
 .toast {
   max-width: 100%;
   padding: 10px 16px;
-  color: var(--black);
+  color: var(--fg);
   font-size: 14px;
   line-height: 1.5;
   word-break: break-word;
   background: var(--surface);
-  border: 1px solid var(--black);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
 }
 
 .toast-error {
-  color: #ffffff;
-  background: var(--black);
+  color: var(--toast-error-fg);
+  background: var(--toast-error-bg);
+  border-color: var(--toast-error-bg);
+}
+
+::placeholder {
+  color: var(--faint);
+  opacity: 1;
 }
 
 .site-footer {
@@ -506,6 +580,12 @@ img {
 
   .site-header h1 {
     font-size: 26px;
+  }
+
+  .theme-toggle {
+    margin-top: 2px;
+    padding: 3px 8px;
+    font-size: 12px;
   }
 
   .dropzone {
