@@ -130,14 +130,217 @@ _CJK = ("\u3000-\u303f\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff"
         "\uff01-\uff0f\uff1a-\uff20\uff3b-\uff40\uff5b-\uff65")
 _CJK_GAP_RE = re.compile(f"(?<=[{_CJK}])[ \t\u00a0\u3000]+(?=[{_CJK}])")
 
-def clean_ocr_text(raw: str) -> str:
-    """按行清洗 OCR 文本：去首尾空白、去 CJK 字符间空格、丢空行。"""
-    lines = []
-    for line in raw.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
-        line = _CJK_GAP_RE.sub("", line.strip())
-        if line:
-            lines.append(line)
-    return "\n".join(lines)
+_SPACE_RUN_RE = re.compile(r" {2,}")
+_CJK_EDGE_RE = re.compile(r"[\u3000-\u303f\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef]")
+_SENTENCE_END_RE = re.compile(r"[。！？!?；;…]$")
+# 纯 URL / 域名行即使以 . 结尾也视为「未结束」，以便继续合并下一行
+_URL_OR_DOMAIN_RE = re.compile(
+    r"(?:https?://\S+|www\.\S+|[\w-]+(?:\.[\w-]+)*\."
+    r"(?:com|org|net|cn|io|dev|js|css|py|html|json|md)\b)", re.I)
+# 列表项行首：符号列表 / 1. 1、1) / （1） / 一、 / a)
+_LIST_ITEM_RE = re.compile(
+    r"^(?:"
+    r"[•·▪◦‣∙●○–—*+\-]\s+"
+    r"|\d{1,3}(?:[.．)](?!\d)|[、)])\s*"
+    r"|[（(][一二三四五六七八九十百\d]+[）)]\s*"
+    r"|[一二三四五六七八九十百]+[、.．]\s*"
+    r"|[A-Za-z][)]\s+"
+    r")")
+# 代码行：行首常见关键字 / HTML 标签
+_CODE_START_RE = re.compile(
+    r"^(?:#include\b|</?[A-Za-z][\w:-]*(?:[ >]|$)|"
+    r"(?:def|class|import|from|function|const|let|var|return|if|for|while|print|echo|"
+    r"package|public|private|protected|static|async|await|try|except|elif|else|switch|"
+    r"case|break|continue|new|this|self)\b)")
+_CODE_SYMBOLS = "{};=<>()[]"
+
+
+def _clean_line(line: str) -> str:
+    """单行清洗：tab/全角空格转空格、去首尾空白、去 CJK 字间空格、压缩空格。"""
+    line = line.replace("\t", " ").replace("\u3000", " ").replace("\u00a0", " ").strip()
+    line = _CJK_GAP_RE.sub("", line)
+    return _SPACE_RUN_RE.sub(" ", line).strip()
+
+
+def _preprocess_lines(raw: str) -> list[str]:
+    """统一换行并逐行清洗，返回非空行列表（纯文本回退用）。"""
+    text = raw.replace("\r\n", "\n").replace("\r", "\n")
+    return [cleaned for cleaned in (_clean_line(line) for line in text.split("\n")) if cleaned]
+
+
+def _ends_sentence(line: str) -> bool:
+    """该行是否以句末标点结束（决定硬换行处是否分段）。"""
+    if _SENTENCE_END_RE.search(line):
+        return True
+    if line.endswith("."):
+        return _URL_OR_DOMAIN_RE.search(line) is None
+    return False
+
+
+def _is_heading(line: str, next_line: str | None) -> bool:
+    """短行且下一行明显更长（≥本行长度+6）时视为标题。"""
+    if len(line) > 24 or next_line is None or _ends_sentence(line):
+        return False
+    return len(next_line) >= len(line) + 6
+
+
+def _is_code_line(line: str) -> bool:
+    """代码行：命中行首关键字，或含 ASCII 且代码符号 ≥2 个。"""
+    if _CODE_START_RE.match(line):
+        return True
+    if re.search(r"[A-Za-z0-9]", line):
+        return sum(line.count(symbol) for symbol in _CODE_SYMBOLS) >= 2
+    return False
+
+
+def _classify_lines(lines: list[str]) -> list[str]:
+    """逐行分类：list（列表）/ code（代码）/ heading（标题）/ text（正文）。"""
+    kinds: list[str] = []
+    for index, line in enumerate(lines):
+        next_line = lines[index + 1] if index + 1 < len(lines) else None
+        if _LIST_ITEM_RE.match(line):
+            kinds.append("list")
+        elif _is_code_line(line):
+            kinds.append("code")
+        elif _is_heading(line, next_line):
+            kinds.append("heading")
+        else:
+            kinds.append("text")
+    return kinds
+
+
+def _median(values: list[float]) -> float | None:
+    """中位数；空列表返回 None。"""
+    if not values:
+        return None
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return (ordered[middle - 1] + ordered[middle]) / 2
+
+
+def _line_gap(prev: dict, cur: dict) -> float | None:
+    """上一行底部到下一行顶部的垂直间距；任一行缺几何信息时返回 None。"""
+    if prev.get("y") is None or prev.get("h") is None or cur.get("y") is None:
+        return None
+    return cur["y"] - (prev["y"] + prev["h"])
+
+
+def _paragraph_threshold(records: list[dict]) -> float | None:
+    """段落阈值 T = max(G + 0.8*H, 1.4*H)：H 行高中位数，G 相邻行间距中位数。"""
+    heights = [record["h"] for record in records if record.get("h")]
+    height = _median(heights)
+    if height is None:
+        return None
+    gaps = []
+    for prev, cur in zip(records, records[1:]):
+        gap = _line_gap(prev, cur)
+        if gap is not None:
+            gaps.append(gap)
+    median_gap = _median(gaps)
+    if median_gap is None:
+        return 1.4 * height
+    return max(median_gap + 0.8 * height, 1.4 * height)
+
+
+def _normalize_lines(raw) -> list[dict]:
+    """把 OCR 结果规范为行记录列表（text 必填，x/y/w/h 可缺省）。
+
+    raw 支持 run_ocr 返回的 list[dict]（含几何）、list[str] 或纯文本 str。
+    """
+    if isinstance(raw, str):
+        source: list[dict] = [{"text": line} for line in _preprocess_lines(raw)]
+    elif isinstance(raw, (list, tuple)):
+        source = []
+        for item in raw:
+            if isinstance(item, dict):
+                record = {"text": item.get("text", "")}
+                for key in ("x", "y", "w", "h"):
+                    value = item.get(key)
+                    valid = isinstance(value, (int, float)) and not isinstance(value, bool)
+                    record[key] = float(value) if valid else None
+                source.append(record)
+            elif isinstance(item, str):
+                source.append({"text": item})
+    else:
+        return []
+    records = []
+    for record in source:
+        text = _clean_line(str(record.get("text") or ""))
+        if text:
+            cleaned = dict(record)
+            cleaned["text"] = text
+            records.append(cleaned)
+    return records
+
+
+def join_wrapped(prev: str, nxt: str) -> str:
+    """拼接硬换行两行：CJK 直接接、英文/数字间一个空格、连字符断词还原。"""
+    if prev.endswith("-") and nxt[:1].isascii() and nxt[:1].islower():
+        return prev[:-1] + nxt
+    if _CJK_EDGE_RE.match(prev[-1]) or _CJK_EDGE_RE.match(nxt[0]):
+        return prev + nxt
+    return prev + " " + nxt
+
+
+def _build_blocks(records: list[dict], kinds: list[str],
+                  threshold: float | None) -> list[tuple[str, list[str]]]:
+    """组装块：列表/代码/标题各成块，正文按句末标点与几何段间距合并/分段。"""
+    blocks: list[tuple[str, list[str]]] = []
+    current: tuple[str, list[str]] | None = None
+    for index, (record, kind) in enumerate(zip(records, kinds)):
+        text = record["text"]
+        gap = _line_gap(records[index - 1], record) if index else None
+        if kind in ("list", "code"):
+            if current is not None and current[0] == kind:
+                current[1].append(text)
+            else:
+                if current is not None:
+                    blocks.append(current)
+                current = (kind, [text])
+        elif kind == "heading":
+            if current is not None:
+                blocks.append(current)
+                current = None
+            blocks.append(("heading", [text]))
+        elif current is not None and current[0] == "list":
+            # 列表项被硬换行拆开：间距小且上一项未以句末标点结尾时并回该列表项
+            if (threshold is not None and gap is not None and gap <= threshold
+                    and not _ends_sentence(current[1][-1])):
+                current[1][-1] = join_wrapped(current[1][-1], text)
+            else:
+                blocks.append(current)
+                current = ("text", [text])
+        elif current is not None and current[0] == "text":
+            force_break = threshold is not None and gap is not None and gap > threshold
+            if force_break or _ends_sentence(current[1][-1]):
+                blocks.append(current)
+                current = ("text", [text])
+            else:
+                current[1][-1] = join_wrapped(current[1][-1], text)
+        else:
+            if current is not None:
+                blocks.append(current)
+            current = ("text", [text])
+    if current is not None:
+        blocks.append(current)
+    return blocks
+
+
+def format_ocr_text(raw) -> str:
+    """把 OCR 结果排版为纯文本笔记正文。
+
+    raw 可为带行几何的 list[dict]（新协议）或纯文本 str（回退）。
+    - 合并硬换行；句末标点或几何段间距 gap > T 处分段；
+    - 列表项、连续代码行、标题行各自成块；块之间空一行。
+    """
+    records = _normalize_lines(raw)
+    if not records:
+        return ""
+    kinds = _classify_lines([record["text"] for record in records])
+    blocks = _build_blocks(records, kinds, _paragraph_threshold(records))
+    return "\n\n".join("\n".join(block_lines) for _, block_lines in blocks)
 
 def sniff_image_ext(raw: bytes) -> str | None:
     """按魔数识别图片格式，仅接受契约支持的格式。"""
@@ -195,8 +398,32 @@ def _powershell(args: list[str], timeout: int) -> subprocess.CompletedProcess:
 def _decode(data: bytes | None) -> str:
     return (data or b"").decode("utf-8", "replace").strip()
 
-def run_ocr(image_path: Path) -> str:
-    """调用 OCR 脚本识别图片，返回原始文本；失败抛 OcrError。"""
+def _parse_ocr_output(stdout: str) -> list[dict]:
+    """解析 OCR 脚本输出：优先 JSON 行几何；非法/旧格式回退为纯文本行。"""
+    try:
+        data = json.loads(stdout)
+    except json.JSONDecodeError:
+        data = None
+    if isinstance(data, dict) and isinstance(data.get("lines"), list):
+        lines = []
+        for item in data["lines"]:
+            if not isinstance(item, dict):
+                continue
+            text = item.get("text")
+            if not isinstance(text, str) or not text.strip():
+                continue
+            record = {"text": text}
+            for key in ("x", "y", "w", "h"):
+                value = item.get(key)
+                valid = isinstance(value, (int, float)) and not isinstance(value, bool)
+                record[key] = float(value) if valid else None
+            lines.append(record)
+        return lines
+    return [{"text": line} for line in stdout.splitlines() if line.strip()]
+
+
+def run_ocr(image_path: Path) -> list[dict]:
+    """调用 OCR 脚本识别图片，返回行列表（含 text/x/y/w/h，几何可能缺省）；失败抛 OcrError。"""
     if not OCR_SCRIPT.is_file():
         raise OcrError("未找到 OCR 脚本 ocr/win_ocr.ps1")
     args = ["-ExecutionPolicy", "Bypass", "-File", str(OCR_SCRIPT),
@@ -210,7 +437,7 @@ def run_ocr(image_path: Path) -> str:
     if proc.returncode != 0:
         detail = (_decode(proc.stderr) or _decode(proc.stdout) or "未知错误").splitlines()[-1]
         raise OcrError(detail[:300])
-    return _decode(proc.stdout)
+    return _parse_ocr_output(_decode(proc.stdout))
 
 _OCR_STATE = {"ready": os.name == "nt"}  # 乐观默认，后台探测后修正
 
@@ -391,7 +618,7 @@ class NoteRequestHandler(BaseHTTPRequestHandler):
             except OSError:
                 pass
             raise
-        content = clean_ocr_text(text)
+        content = format_ocr_text(text)
         now = now_iso()
         note = {"id": note_id, "title": pick_title(payload.get("title"), content),
                 "content": content, "image_url": f"/images/{note_id}.{ext}",

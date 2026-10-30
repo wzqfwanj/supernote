@@ -53,8 +53,41 @@ try {
     if ($null -eq $engine) { throw "No OCR language pack is installed." }
 
     $result = Await ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
-    $lines = @($result.Lines | ForEach-Object { $_.Text })
-    [Console]::Out.WriteLine(($lines -join "`n"))
+
+    # OcrLine.BoundingRect is not reachable from PowerShell 5.1, but OcrWord.BoundingRect is,
+    # so each line box is the union of its words' rectangles. JSON is emitted as one line.
+    $invariant = [System.Globalization.CultureInfo]::InvariantCulture
+    $records = New-Object System.Collections.Generic.List[string]
+    foreach ($line in $result.Lines) {
+        $words = @($line.Words)
+        if ($words.Count -eq 0) { continue }
+        $text = [string]$line.Text
+        if ([string]::IsNullOrWhiteSpace($text)) { continue }
+        $minX = [double]::MaxValue
+        $minY = [double]::MaxValue
+        $maxRight = [double]::MinValue
+        $maxBottom = [double]::MinValue
+        foreach ($word in $words) {
+            $rect = $word.BoundingRect
+            $left = [double]$rect.X
+            $top = [double]$rect.Y
+            $right = $left + [double]$rect.Width
+            $bottom = $top + [double]$rect.Height
+            if ($left -lt $minX) { $minX = $left }
+            if ($top -lt $minY) { $minY = $top }
+            if ($right -gt $maxRight) { $maxRight = $right }
+            if ($bottom -gt $maxBottom) { $maxBottom = $bottom }
+        }
+        $textJson = ConvertTo-Json -InputObject $text -Compress
+        $record = '{"text":' + $textJson +
+            ',"x":' + $minX.ToString("0.##", $invariant) +
+            ',"y":' + $minY.ToString("0.##", $invariant) +
+            ',"w":' + ($maxRight - $minX).ToString("0.##", $invariant) +
+            ',"h":' + ($maxBottom - $minY).ToString("0.##", $invariant) + '}'
+        $records.Add($record)
+    }
+    $json = '{"lines":[' + ($records -join ',') + ']}'
+    [Console]::Out.WriteLine($json)
 }
 catch {
     [Console]::Error.WriteLine($_.Exception.Message)
